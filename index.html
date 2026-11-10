@@ -315,6 +315,7 @@ td:first-child{white-space:nowrap}
         <a class="t-link" href="#usercmd/ExTank">Example: Tank combo</a>
         <a class="t-link" href="#usercmd/ExAirStuck">Example: AirStuck</a>
         <a class="t-link" href="#usercmd/ExFall">Example: No fall damage</a>
+        <a class="t-link" href="#usercmd/ExChargerTurn">Example: Charger Turn</a>
       </div>
     </div>
 
@@ -3646,6 +3647,8 @@ end)</code></pre>
     <a href="#usercmd/ExTank">Example: Tank combo<span>Hold a key to attack with both buttons</span></a>
     <a href="#usercmd/ExAirStuck">Example: AirStuck<span>Freeze in the air with a key</span></a>
     <a href="#usercmd/ExFall">Example: No fall damage<span>Avoid damage from falling</span></a>
+   <a href="#usercmd/ExChargerTurn">Example: Charger Turn<span>Removes movement restrictions and freeze flags during charger gameplay</span></a>
+
   </div>
   <div class="note warn"><strong>Only use it in CreateMove.</strong> The command only exists during that callback. Do not keep it in a variable.</div>
 </article>
@@ -3928,6 +3931,42 @@ local enable = gui.Checkbox(box, "nfd_enable", "Enable", true)</code></pre>
   </div>
   <div class="note"><code>cmd.pitch</code> is written exactly as given. Assigning <code>cmd.viewangles</code> or calling <code>SetViewAngles</code> limits pitch to -89 to 89.</div>
 </article>
+<article class="page" data-route="usercmd/ExChargerTurn">
+  <div class="crumb">usercmd</div>
+  <h1>Example: Charger Turn</h1>
+  <p class="lead">Removes freeze flags from the local player to allow full movement flexibility and prevents the HUD from disappearing. It uses a floating window with one checkbox.</p>
+  <div class="ex">
+    <section data-title="Charger Turn">
+      <pre><code>local FL_FROZEN = bit.lshift(1, 5)
+local FL_FREEZING = bit.lshift(1, 31)
+
+local wnd    = gui.Window("charger_wnd", "Charger Turn", 120, 120, 260, 120)
+local enable = gui.Checkbox(wnd, "charger_enable", "Enable Charger Turn", false)
+
+callbacks.Register("CreateMove", "charger_turn", function(cmd)
+    if not enable:GetValue() then return end
+
+    local player = entities.GetLocalPlayer()
+    if not player or not player:IsAlive() then return end
+
+    local flags = player:GetPropInt("m_fFlags")
+    if flags ~= nil then
+        local newFlags = bit.band(flags, bit.bnot(bit.bor(FL_FROZEN, FL_FREEZING)))
+        player:SetPropInt(newFlags, "m_fFlags")
+    end
+
+    player:SetPropInt(0, "m_iHideHUD")
+end)</code></pre>
+    </section>
+    <section data-title="In a subtab">
+      <pre><code>local tab = gui.Tab(gui.Reference("Exploits"), "charger.tab", "Charger")
+local box = gui.Groupbox(tab, "Charger Turn", 10, 10)
+local enable = gui.Checkbox(box, "charger_enable", "Enable", false)</code></pre>
+    </section>
+  </div>
+  <div class="note">Modifying <code>m_fFlags</code> dynamically via <code>SetPropInt</code> bypasses movement restrictions like <code>FL_FROZEN</code> during special infected gameplay.</div>
+</article>
+
 
 <!-- ================================================= GLOBALS LIB -->
 <article class="page" data-route="globals">
