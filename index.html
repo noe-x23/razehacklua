@@ -187,6 +187,9 @@ td:first-child{white-space:nowrap}
         <a class="t-link" href="#callbacks/Unregister">Unregister</a>
         <a class="t-link" href="#callbacks/Events">Game events</a>
         <a class="t-link" href="#callbacks/MoveStages">PreMove / PostMove</a>
+        <a class="t-link" href="#callbacks/CopyCommand">PreCopyCommand / PostCopyCommand</a>
+        <a class="t-link" href="#callbacks/ExSpeedhack">Example: Speedhack + Rapid fire</a>
+        <a class="t-link" href="#callbacks/ExLagExploit">Example: Lag exploit</a>
         <a class="t-link" href="#callbacks/FrameStageNotify">FrameStageNotify</a>
         <a class="t-link" href="#callbacks/Level">LevelInit / LevelShutdown</a>
         <a class="t-link" href="#callbacks/Render">RenderView / PostRenderView</a>
@@ -256,6 +259,7 @@ td:first-child{white-space:nowrap}
         <a class="t-link" href="#client/GetConVar">GetConVar</a>
         <a class="t-link" href="#client/SetConVar">SetConVar</a>
         <a class="t-link" href="#client/GameEvent">GameEvent object</a>
+        <a class="t-link" href="#client/ExtraCommandsPtr">GetExtraCommandsPtr / GetExtendedCommandsPtr</a>
       </div>
     </div>
 
@@ -311,6 +315,7 @@ td:first-child{white-space:nowrap}
       <div class="lib-b">
         <a class="t-link" href="#usercmd">Overview</a>
         <a class="t-link" href="#usercmd/UserCmd">UserCmd object</a>
+        <a class="t-link" href="#usercmd/RunCmd">RunCmd object</a>
         <a class="t-link" href="#usercmd/Buttons">Button constants</a>
         <a class="t-link" href="#usercmd/ExBhop">Example: Bunnyhop</a>
         <a class="t-link" href="#usercmd/ExTank">Example: Tank combo</a>
@@ -362,6 +367,8 @@ td:first-child{white-space:nowrap}
         <a class="t-link" href="#ffi/Writing">Writing memory</a>
         <a class="t-link" href="#ffi/Structs">Typed structs</a>
         <a class="t-link" href="#ffi/WithMem">Combined with mem</a>
+        <a class="t-link" href="#ffi/Hooks">Hooking a function</a>
+        <a class="t-link" href="#ffi/ExChatSpy">Example: ChatSpy (AW / RZ)</a>
       </div>
     </div>
 
@@ -1463,6 +1470,7 @@ end</code></pre>
     <tr><th>Event</th><th>Gives</th></tr>
     <tr><td><code>Draw</code></td><td>Nothing. Runs every rendered frame.</td></tr>
     <tr><td><code>PreMove</code>, <code>CreateMove</code>, <code>PostMove</code></td><td>A <a href="#usercmd/UserCmd">UserCmd</a>. See <a href="#callbacks/MoveStages">PreMove / PostMove</a>.</td></tr>
+    <tr><td><code>PreCopyCommand</code>, <code>PostCopyCommand</code></td><td>A <a href="#usercmd/RunCmd">RunCmd</a>. See <a href="#callbacks/CopyCommand">PreCopyCommand / PostCopyCommand</a>.</td></tr>
     <tr><td><code>FireGameEvent</code></td><td>A <a href="#client/GameEvent">GameEvent</a>. See <a href="#callbacks/Events">Game events</a>.</td></tr>
     <tr><td><code>FrameStageNotify</code></td><td>A frame stage constant. See <a href="#callbacks/FrameStageNotify">FrameStageNotify</a>.</td></tr>
     <tr><td><code>LevelInit</code>, <code>LevelShutdown</code></td><td>Nothing. See <a href="#callbacks/Level">LevelInit / LevelShutdown</a>.</td></tr>
@@ -1473,6 +1481,8 @@ end</code></pre>
   <div class="list">
     <a href="#callbacks/Register">callbacks.Register<span>Attach a function to an event</span></a>
     <a href="#callbacks/Unregister">callbacks.Unregister<span>Remove a function</span></a>
+    <a href="#callbacks/ExSpeedhack">Example: Speedhack + Rapid fire (Storm)<span>Extra commands and tick base correction from PreCopyCommand</span></a>
+    <a href="#callbacks/ExLagExploit">Example: Lag exploit<span>Sequence shift correction from PreCopyCommand</span></a>
   </div>
 </article>
 
@@ -1739,6 +1749,361 @@ end)</code></pre>
     </section>
   </div>
   <div class="note">For most scripts, <a href="#callbacks/MoveStages">PreMove / CreateMove / PostMove</a> already cover what you need. These two are lower level notifications, useful mainly for counting ticks, counting packets, or running extra movement passes like the SpeedHack example.</div>
+</article>
+<article class="page" data-route="callbacks/CopyCommand">
+  <div class="crumb">callbacks</div>
+  <h1>PreCopyCommand / PostCopyCommand</h1>
+  <p class="lead">Two stages around the last step before a command is sent to the server. They receive a <a href="#usercmd/RunCmd">RunCmd</a>, not a UserCmd.</p>
+  <div class="tw"><table>
+    <tr><th>Event</th><th>Runs</th><th>Use it for</th></tr>
+    <tr><td><code>PreCopyCommand</code></td><td>Before the command is processed natively (prediction and built-in corrections such as NoSpread).</td><td>Your intention: where to look and which buttons to press.</td></tr>
+    <tr><td><code>PostCopyCommand</code></td><td>After that processing, right before the game decides whether the packet is sent.</td><td>Deciding if the packet goes out (<code>SetSendPacket</code>) and reading the final command.</td></tr>
+  </table></div>
+  <div class="ex">
+    <section data-title="Pre and Post">
+      <pre><code>callbacks.Register("PreCopyCommand", "test_pre", function(cmd)
+    if cmd:GetCommandNumber() % 64 == 0 then
+        cmd:SetForwardMove(cmd:GetForwardMove() + 1.0)
+    end
+end)
+
+callbacks.Register("PostCopyCommand", "test_post", function(cmd)
+    local ang = cmd:GetViewAngles()
+    print(string.format("sending: pitch=%.1f yaw=%.1f buttons=%d",
+        ang.x, ang.y, cmd:GetButtons()))
+end)</code></pre>
+    </section>
+    <section data-title="Aim in Pre">
+      <pre><code>callbacks.Register("PreCopyCommand", "aim_pre", function(cmd)
+    cmd:SetViewAngles(0, 90)   -- your aim direction
+    cmd:AddButton(IN_ATTACK)
+end)</code></pre>
+    </section>
+    <section data-title="Choke in Post">
+      <pre><code>callbacks.Register("PostCopyCommand", "choke_post", function(cmd)
+    if input.IsButtonDown("X") then
+        cmd:SetSendPacket(false)
+    end
+end)</code></pre>
+    </section>
+  </div>
+  <div class="note">Scripts that take part in the extra command loop read and write the counters from <a href="#client/ExtraCommandsPtr">client.GetExtraCommandsPtr and client.GetExtendedCommandsPtr</a>. Full scripts: <a href="#callbacks/ExSpeedhack">Speedhack + Rapid fire (Storm)</a> and <a href="#callbacks/ExLagExploit">Lag exploit</a>.</div>
+</article>
+
+
+<article class="page" data-route="callbacks/ExSpeedhack">
+  <div class="crumb">callbacks</div>
+  <h1>Example: Speedhack + Rapid fire (Storm)</h1>
+  <p class="lead">One script that takes part in the extra command loop of <code>CL_Move</code>. Holding the Speed key asks the loop for extra passes and scales the tick. Holding the Rapid fire (Storm) key runs the tick base correction. Everything runs inside <a href="#callbacks/CopyCommand">PreCopyCommand</a>, using the counters returned by <a href="#client/ExtraCommandsPtr">client.GetExtraCommandsPtr and client.GetExtendedCommandsPtr</a>.</p>
+ 
+  <p>The original values of <code>misc.exploits.bunnyhop</code> and <code>aims.aimbot.method</code> are saved when a key is pressed and written back when it is released.</p>
+  <div class="ex">
+    <section data-title="Full script">
+      <pre><code>-- RAPID FIRE AND SPEEDHACK (STORM) - RazeHack by noe23x (UC)
+
+local ref    = gui.Reference("Exploits", "Exploits_", "Rapid fire(Storm)")
+local sh_on  = gui.Checkbox(ref, "sp_on", "Speedhack (Lua)", true)
+local sh_fat = gui.Slider(ref, "sp_factor", "Speedhack factor", 18, 0, 100, 1)
+local sh_key = gui.Keybox(ref, "sp_key", "Speed Key", 49)
+
+local tb_on  = gui.Checkbox(ref, "tb_on", "Rapid fire (Storm)", false)
+local tb_key = gui.Keybox(ref, "tb_key", "Rapid fire (Storm) Key", 0)
+local tb_fat = gui.Slider(ref, "tb_factor", "Rapid fire (Storm) factor", 14, 0, 100, 1)
+local bloq_pulo = gui.Checkbox(ref, "tb_nojump", "Block jump while speed/correction", true)
+local forcar_silent = gui.Checkbox(ref, "tb_silent", "Force Silent aim while speed/correction", true)
+
+pcall(ffi.cdef, [[
+    void* GetModuleHandleA(const char* name);
+    typedef struct { int32_t Extra_Commands; int32_t Sequence_Shift; } sp_ext_cmd_t;
+]])
+
+local OFF_LOCAL_PLAYER = 7498712
+local OFF_GLOBALS      = 7096744
+local OFF_TICK_FLOAT   = 16
+local OFF_TICK_CMD     = 20
+local OFF_INTERVAL     = 28
+
+local client_base = tonumber(ffi.cast("uint32_t", ffi.C.GetModuleHandleA("client.dll")))
+local engine_base = tonumber(ffi.cast("uint32_t", ffi.C.GetModuleHandleA("engine.dll")))
+local OFF_UWU      = 4352236
+
+local p_extra    = ffi.cast("int32_t*",     client.GetExtraCommandsPtr())
+local p_extended = ffi.cast("sp_ext_cmd_t*", client.GetExtendedCommandsPtr())
+
+local function local_player()
+    local p = ffi.cast("uint32_t*", client_base + OFF_LOCAL_PLAYER)[0]
+    if p == 0 then return nil end
+    return p
+end
+
+local function tick_interval()
+    local v
+    pcall(function() v = globals.TickInterval() end)
+    if v and v &gt; 0 then return v end
+    local gv = ffi.cast("uint32_t*", client_base + OFF_GLOBALS)[0]
+    if gv == 0 then return 1 / 30 end
+    return ffi.cast("float*", gv + OFF_INTERVAL)[0]
+end
+
+local function key_down(k)
+    return k &gt; 0 and input.IsButtonDown(k)
+end
+
+local function clamp(v, lo, hi)
+    if hi &lt; lo then return hi end
+    return math.max(lo, math.min(hi, v))
+end
+
+local function numero_cmd(cmd)
+    local n
+    pcall(function() n = cmd:GetCommandNumber() end)
+    if n == nil then pcall(function() n = cmd.CommandNumber end) end
+    return n
+end
+
+local function obter_uwu()
+    local base = ffi.cast("uint32_t*", engine_base + OFF_UWU)[0]
+    if base == 0 then return nil end
+    local p = ffi.cast("uint32_t*", base + 24)[0]
+    if p == 0 then return nil end
+    return p
+end
+
+local Accumulative_Correction = 0
+
+local function correcao_tickbase(fila, ext_atual, idx_atual, idx_inicial, intervalo)
+    if fila &lt;= 0 then return end
+    local inicial = p_extended[idx_inicial]
+
+    if idx_atual == idx_inicial then
+        ext_atual.Extra_Commands = 0
+        p_extra[0] = math.max(math.floor(0.06 / intervalo + 0.5), fila)
+    else
+        Accumulative_Correction = Accumulative_Correction + 1
+    end
+
+    if inicial.Extra_Commands == 0 then
+        local uwu = obter_uwu()
+        if uwu then
+            ffi.cast("int32_t*", uwu + 16)[0] = -1
+            ffi.cast("int32_t*", uwu + 28)[0] = 255
+        end
+    end
+end
+
+local function corrigir_extended(ext_atual, idx_inicial)
+    local canal = obter_uwu()
+    if canal and ffi.cast("int32_t*", canal + 16)[0] ~= -1 then
+        ext_atual.Extra_Commands = ext_atual.Extra_Commands + Accumulative_Correction
+        Accumulative_Correction = 0
+    end
+    ext_atual.Sequence_Shift = p_extended[idx_inicial].Sequence_Shift
+end
+
+local IN_JUMP = 2
+
+local guardado = nil
+
+local function em_uso()
+    return (sh_on:GetValue() and key_down(sh_key:GetValue()))
+        or (tb_on:GetValue() and key_down(tb_key:GetValue()))
+end
+
+local function restaurar_menu()
+    if not guardado then return end
+    if guardado.bhop ~= nil then pcall(gui.SetValue, "misc.exploits.bunnyhop", guardado.bhop) end
+    if guardado.metodo ~= nil then pcall(gui.SetValue, "aims.aimbot.method", guardado.metodo) end
+    guardado = nil
+end
+
+local function atualizar_menu()
+    if em_uso() then
+        if not guardado then
+            guardado = {}
+            if bloq_pulo:GetValue() then
+                pcall(function()
+                    guardado.bhop = gui.GetValue("misc.exploits.bunnyhop")
+                    gui.SetValue("misc.exploits.bunnyhop", false)
+                end)
+            end
+            if forcar_silent:GetValue() then
+                pcall(function()
+                    guardado.metodo = gui.GetValue("aims.aimbot.method")
+                    gui.SetValue("aims.aimbot.method", 1)
+                end)
+            end
+        end
+    else
+        restaurar_menu()
+    end
+end
+
+pcall(callbacks.Register, "Unload", "sp_unload", restaurar_menu)
+
+callbacks.Register("PreCopyCommand", "sp_precopy", function(cmd)
+    atualizar_menu()
+    local num = numero_cmd(cmd)
+    local lp = local_player()
+    if not num or not lp then return end
+
+    local ext = p_extended[num % 150]
+    local intervalo = tick_interval()
+
+    local speed_ativo = sh_on:GetValue() and key_down(sh_key:GetValue())
+    local corr_ativa  = tb_on:GetValue() and key_down(tb_key:GetValue())
+
+    if p_extra[0] == -1 then
+        local pf = ffi.cast("float*", lp + OFF_TICK_FLOAT)
+
+        pf[0] = intervalo
+        ffi.cast("int32_t*", lp + OFF_TICK_CMD)[0] = num
+
+        if speed_ativo then
+            local minimo = math.floor(0.06 / intervalo + 0.5)
+            p_extra[0] = clamp(5, minimo, sh_fat:GetValue())
+            ext.Extra_Commands = math.max(0, p_extra[0])
+            pf[0] = pf[0] * (1 + ext.Extra_Commands)
+        end
+    end
+
+    local idx_inicial = ffi.cast("int32_t*", lp + OFF_TICK_CMD)[0] % 150
+
+    if corr_ativa then
+        correcao_tickbase(tb_fat:GetValue(), ext, num % 150, idx_inicial, intervalo)
+    end
+
+    corrigir_extended(ext, idx_inicial)
+
+    if bloq_pulo:GetValue() and (speed_ativo or corr_ativa) then
+        cmd:RemoveButton(IN_JUMP)
+    end
+end)
+
+callbacks.Register("Draw", "sp_draw", function()
+    atualizar_menu()
+    if sh_on:GetValue() and key_down(sh_key:GetValue()) then
+        draw.Color(0, 255, 0, 255)
+        draw.Text(10, 10, "Speedhack: ATIVO")
+    end
+end)</code></pre>
+    </section>
+  </div>
+  <div class="note warn"><strong>Build specific.</strong> The offsets at the top of the script (local player, tick float, command number, network channel) belong to one game build. A wrong offset writes into unrelated memory and can crash the game. Turn off the built-in speedhack first, so the same value is not applied twice.</div>
+</article>
+
+<article class="page" data-route="callbacks/ExLagExploit">
+  <div class="crumb">callbacks</div>
+  <h1>Example: Lag exploit</h1>
+  <p class="lead">Hold a key to shift the sequence numbers of the commands being sent. Credits to noe(DC) for the way the lag exploit is smoothed. It runs inside <a href="#callbacks/CopyCommand">PreCopyCommand</a> and works on the entries returned by <a href="#client/ExtraCommandsPtr">client.GetExtendedCommandsPtr</a>.</p>
+
+  
+  <div class="tw"><table>
+    <tr><th>Control</th><th>Description</th></tr>
+    <tr><td><code>Lag exploit</code></td><td>Turns the script on.</td></tr>
+    <tr><td><code>Lag exploit Key</code></td><td>The shift is applied only while this key is held. The default is no key.</td></tr>
+    <tr><td><code>Factor lagexploit</code></td><td>The value added to the target shift, from 200 to 10000.</td></tr>
+  </table></div>
+  <div class="ex">
+    <section data-title="Full script">
+      <pre><code>-- Lag exploit - RazeHack by noe23x (UC)
+-- Credits to Noe (Discord) for the method to mitigate the lag exploit
+local ref    = gui.Reference("Exploits", "Exploits_", "Lag exploit(RZ)")
+local v2_on  = gui.Checkbox(ref, "lagexploit_on", "Lag exploit", false)
+local v2_key = gui.Keybox(ref, "lagexploit_key", "Lag exploit Key", 0)
+local v2_fat = gui.Slider(ref, "lagexploit_factor", "Factor lagexploit", 200, 200, 10000, 1)
+
+pcall(ffi.cdef, [[
+    void* GetModuleHandleA(const char* name);
+    typedef struct { int32_t Extra_Commands; int32_t Sequence_Shift; } tc2_ext_cmd_t;
+]])
+
+local OFF_LOCAL_PLAYER = 7498712
+local OFF_TICK_CMD     = 20
+local OFF_SEQ_BASE     = 5324
+local OFF_UWU          = 4352236
+local MAX_SHIFT        = 600
+
+local client_base = tonumber(ffi.cast("uint32_t", ffi.C.GetModuleHandleA("client.dll")))
+local engine_base = tonumber(ffi.cast("uint32_t", ffi.C.GetModuleHandleA("engine.dll")))
+
+local p_extended = ffi.cast("tc2_ext_cmd_t*", client.GetExtendedCommandsPtr())
+local p_extra    = ffi.cast("int32_t*", client.GetExtraCommandsPtr())
+
+local function local_player()
+    local p = ffi.cast("uint32_t*", client_base + OFF_LOCAL_PLAYER)[0]
+    if p == 0 then return nil end
+    return p
+end
+
+local function canal_rede()
+    local base = ffi.cast("uint32_t*", engine_base + OFF_UWU)[0]
+    if base == 0 then return nil end
+    local p = ffi.cast("uint32_t*", base + 24)[0]
+    if p == 0 then return nil end
+    return p
+end
+
+local function key_down(k)
+    return k &gt; 0 and input.IsButtonDown(k)
+end
+
+local function div_c(a, b)
+    if a &gt;= 0 then return math.floor(a / b) end
+    return -math.floor(-a / b)
+end
+
+local function numero_cmd(cmd)
+    local n
+    pcall(function() n = cmd:GetCommandNumber() end)
+    if n == nil then pcall(function() n = cmd.CommandNumber end) end
+    return n
+end
+
+local function correcao_v2(reserva, num, lp)
+    local idx_base = ffi.cast("int32_t*", lp + OFF_TICK_CMD)[0]
+    local atual    = p_extended[num % 150]
+    local inicial  = p_extended[idx_base % 150]
+
+    if inicial.Sequence_Shift ~= 0 then return end
+
+    local base_seq = ffi.cast("int32_t*", lp + OFF_SEQ_BASE)[0]
+    local alvo = div_c(base_seq - atual.Extra_Commands + 149, 150) * 150 + reserva
+    if alvo == 0 then return end
+
+    if alvo &gt; MAX_SHIFT then alvo = MAX_SHIFT
+    elseif alvo &lt; -MAX_SHIFT then alvo = -MAX_SHIFT end
+
+    local canal = canal_rede()
+    if canal then
+        local p = ffi.cast("int32_t*", canal + 8)
+        p[0] = p[0] + alvo
+    end
+
+    atual.Sequence_Shift = atual.Sequence_Shift + alvo
+
+    local cn = num - 1
+    while cn &gt;= idx_base do
+        p_extended[cn % 150].Sequence_Shift = atual.Sequence_Shift
+        cn = cn - 1
+    end
+end
+
+callbacks.Register("PreCopyCommand", "lagexploit_precopy", function(cmd)
+    if not v2_on:GetValue() or not key_down(v2_key:GetValue()) then return end
+
+    local num = numero_cmd(cmd)
+    local lp = local_player()
+    if not num or not lp then return end
+
+    if p_extra[0] == -1 then
+        ffi.cast("int32_t*", lp + OFF_TICK_CMD)[0] = num
+    end
+
+    correcao_v2(v2_fat:GetValue(), num, lp)
+end)</code></pre>
+    </section>
+  </div>
+  <div class="note warn"><strong>Build specific.</strong> The offsets in the script belong to one game build, and the script writes to the network channel. A wrong offset can crash the game.</div>
 </article>
 
 <article class="page" data-route="callbacks/ExCamera">
@@ -2517,6 +2882,7 @@ end)</code></pre>
     <a href="#client/GetConVar">client.GetConVar<span>Read a console variable</span></a>
     <a href="#client/SetConVar">client.SetConVar<span>Change a console variable</span></a>
     <a href="#client/GameEvent">GameEvent object<span>Data passed to FireGameEvent</span></a>
+    <a href="#client/ExtraCommandsPtr">client.GetExtraCommandsPtr, GetExtendedCommandsPtr<span>Addresses of the extra command counters</span></a>
   </div>
 </article>
 
@@ -2828,6 +3194,57 @@ end)</code></pre>
 </article>
 
 <!-- ================================================= CLIENTSTATE -->
+<article class="page" data-route="client/ExtraCommandsPtr">
+  <div class="crumb">client</div>
+  <h1>GetExtraCommandsPtr / GetExtendedCommandsPtr</h1>
+  <p class="lead">Return the memory address of two internal variables of the movement system, as numbers. A script reads and writes them with <a href="#ffi">ffi</a> to take part in the extra command loop that runs inside <code>CL_Move</code>.</p>
+  <div class="sig">client.GetExtraCommandsPtr()  →  number
+client.GetExtendedCommandsPtr()  →  number</div>
+  <div class="tw"><table>
+    <tr><th>Function</th><th>Points to</th><th>Type</th></tr>
+    <tr><td><code>GetExtraCommandsPtr</code></td><td>The extra commands counter.</td><td>one <code>int32_t</code></td></tr>
+    <tr><td><code>GetExtendedCommandsPtr</code></td><td>The first of 150 entries, one per command.</td><td>array of <code>{ int32_t Extra_Commands; int32_t Sequence_Shift; }</code></td></tr>
+  </table></div>
+  <h2>How the counter works</h2>
+  <ul>
+    <li>At the start of every <code>CL_Move</code> the counter is set to <code>-1</code>. In <a href="#callbacks/CopyCommand">PreCopyCommand</a> that value marks the first command of the batch.</li>
+    <li>If a script writes a number greater than zero, <code>CL_Move</code> runs the command again, lowering the counter by one each pass, until it reaches zero.</li>
+    <li>The entry of a command is <code>entries[commandNumber % 150]</code>. <code>Extra_Commands</code> and <code>Sequence_Shift</code> of that entry are reset before <code>PreCopyCommand</code> runs, so a script can fill them for the current command.</li>
+  </ul>
+  <div class="ex">
+    <section data-title="Read the counter">
+      <pre><code>local p_extra = ffi.cast("int32_t*", client.GetExtraCommandsPtr())
+
+callbacks.Register("PreCopyCommand", "show_extra", function(cmd)
+    print("counter:", p_extra[0])    -- -1 on the first command of CL_Move
+end)</code></pre>
+    </section>
+    <section data-title="Request extra passes">
+      <pre><code>local p_extra = ffi.cast("int32_t*", client.GetExtraCommandsPtr())
+
+callbacks.Register("PreCopyCommand", "extra_passes", function(cmd)
+    if p_extra[0] == -1 and input.IsButtonDown("V") then
+        p_extra[0] = 5               -- run 5 more passes
+    end
+end)</code></pre>
+    </section>
+    <section data-title="Entry of the current command">
+      <pre><code>ffi.cdef[[
+    typedef struct { int32_t Extra_Commands; int32_t Sequence_Shift; } ext_cmd_t;
+]]
+
+local entries = ffi.cast("ext_cmd_t*", client.GetExtendedCommandsPtr())
+
+callbacks.Register("PreCopyCommand", "show_entry", function(cmd)
+    local e = entries[cmd:GetCommandNumber() % 150]
+    print(e.Extra_Commands, e.Sequence_Shift)
+end)</code></pre>
+    </section>
+  </div>
+  <div class="note warn"><strong>No safety net.</strong> These are plain addresses. Writing a wrong value, or past the 150 entries, corrupts memory or crashes the game. Change them only from <code>PreCopyCommand</code>, where the native code reads them on the same tick.</div>
+  <div class="note">Full scripts that use both: <a href="#callbacks/ExSpeedhack">Speedhack + Rapid fire (Storm)</a> and <a href="#callbacks/ExLagExploit">Lag exploit</a>.</div>
+</article>
+
 <article class="page" data-route="clientstate">
   <div class="crumb">L4D2 Lua libraries</div>
   <h1>clientstate</h1>
@@ -3612,7 +4029,8 @@ end</code></pre>
   <div class="tw"><table>
     <tr><th>Method</th><th>Description</th></tr>
     <tr><td><code>GetHitboxPosition(hitbox)</code></td><td>Center of a hitbox as a Vector3.</td></tr>
-    <tr><td><code>GetBonePosition(bone)</code></td><td>Table with <code>position</code> and <code>angles</code>, each with <code>x</code>, <code>y</code>, <code>z</code>. Returns <code>nil</code> on failure.</td></tr>
+<tr><td><code>GetBonePosition(bone)</code></td><td>Bone position as a Vector3. Returns <code>nil</code> on failure.</td></tr>
+<tr><td><code>GetBoneAngles(bone)</code></td><td>Bone angles as EulerAngles. Returns <code>nil</code> on failure.</td></tr>
     <tr><td><code>GetHitboxInfo(hitbox)</code></td><td>Table with <code>center</code>, <code>mins</code>, <code>maxs</code> (each with <code>x</code>, <code>y</code>, <code>z</code>) and <code>group</code>.</td></tr>
     <tr><td><code>GetNumHitboxes()</code></td><td>Number of hitboxes.</td></tr>
     <tr><td><code>GetHitboxGroup(hitbox)</code></td><td>Hit group of a hitbox. Returns -1 on failure.</td></tr>
@@ -3644,9 +4062,12 @@ end</code></pre>
 end)</code></pre>
     </section>
     <section data-title="Bone">
-      <pre><code>local bone = p:GetBonePosition(10)
-if bone then
-    print(bone.position.x, bone.position.y, bone.position.z)
+
+<pre><code>local pos = p:GetBonePosition(10)
+local ang = p:GetBoneAngles(10)
+if pos and ang then
+    print("pos:", pos.x, pos.y, pos.z)
+    print("ang:", ang.x, ang.y, ang.z)
 end</code></pre>
     </section>
     <section data-title="Hitbox info">
@@ -3925,6 +4346,7 @@ end)</code></pre>
 
   </div>
   <div class="note warn"><strong>Only use it in CreateMove.</strong> The command only exists during that callback. Do not keep it in a variable.</div>
+  <a href="#usercmd/RunCmd">RunCmd object<span>Command used by PreCopyCommand / PostCopyCommand</span></a>
 </article>
 
 <article class="page" data-route="usercmd/UserCmd">
@@ -4006,6 +4428,32 @@ end)</code></pre>
 end)</code></pre>
     </section>
   </div>
+</article>
+<article class="page" data-route="usercmd/RunCmd">
+  <div class="crumb">usercmd</div>
+  <h1>RunCmd object</h1>
+  <p class="lead">The command object given to <a href="#callbacks/CopyCommand">PreCopyCommand / PostCopyCommand</a>. It is a different object from <a href="#usercmd/UserCmd">UserCmd</a>.</p>
+  <h2>Fields</h2>
+  <div class="tw"><table>
+    <tr><th>Field</th><th>Type</th><th>Description</th></tr>
+    <tr><td><code>Buttons</code></td><td>number</td><td>Button flags.</td></tr>
+    <tr><td><code>CommandNumber</code></td><td>number</td><td>Command number.</td></tr>
+    <tr><td><code>TickNumber</code></td><td>number</td><td>Tick number.</td></tr>
+    <tr><td><code>RandomSeed</code></td><td>number</td><td>Random seed.</td></tr>
+  </table></div>
+  <h2>Methods</h2>
+  <div class="tw"><table>
+    <tr><th>Method</th><th>Description</th></tr>
+    <tr><td><code>GetViewAngles()</code></td><td>View angles as EulerAngles.</td></tr>
+    <tr><td><code>SetViewAngles(angles)</code><br><code>SetViewAngles(pitch, yaw [, roll])</code></td><td>Sets the angles. Pitch is limited to -89 to 89 and yaw is wrapped.</td></tr>
+    <tr><td><code>GetForwardMove()</code>, <code>SetForwardMove(v)</code></td><td>Forward movement.</td></tr>
+    <tr><td><code>GetSideMove()</code>, <code>SetSideMove(v)</code></td><td>Side movement.</td></tr>
+    <tr><td><code>GetUpMove()</code>, <code>SetUpMove(v)</code></td><td>Up movement.</td></tr>
+    <tr><td><code>GetButtons()</code>, <code>SetButtons(flags)</code></td><td>Read or replace all button flags.</td></tr>
+    <tr><td><code>IsButtonDown(button)</code>, <code>AddButton(button)</code>, <code>RemoveButton(button)</code></td><td>Test, press or release a button.</td></tr>
+    <tr><td><code>GetCommandNumber()</code>, <code>GetTickNumber()</code></td><td>Command and tick number.</td></tr>
+    <tr><td><code>GetSendPacket()</code>, <code>SetSendPacket(v)</code></td><td>Same behavior as in <a href="#usercmd/UserCmd">UserCmd</a>. See <a href="#usercmd/ExFakeLag">How sendpacket works</a>.</td></tr>
+  </table></div>
 </article>
 
 <article class="page" data-route="usercmd/Buttons">
@@ -4702,6 +5150,8 @@ end)</code></pre>
     <a href="#ffi/Writing">Writing memory<span>Changing a value at an address</span></a>
     <a href="#ffi/Structs">Typed structs<span>Defining a C layout with ffi.cdef</span></a>
     <a href="#ffi/WithMem">Combined with mem<span>Pattern scan, then read through ffi</span></a>
+    <a href="#ffi/Hooks">Hooking a function<span>Trampoline, stub and callback written with ffi</span></a>
+    <a href="#ffi/ExChatSpy">Example: ChatSpy (AW / RZ)<span>Two full scripts that hook the game chat</span></a>
   </div>
   <div class="note warn"><strong>When to use ffi instead of other libraries.</strong> If what you need already exists as a entity property, a menu variable, or a function in <code>engine</code>/<code>client</code>, use that instead — it is safer and does not depend on offsets that can change between game updates. Reach for <code>ffi</code> only for data that genuinely has no other way to reach it from Lua.</div>
 </article>
@@ -4833,6 +5283,711 @@ end</code></pre>
   </div>
   <div class="note">For anything already covered by <a href="#clientstate">clientstate</a>, <a href="#entities/Props">entity properties</a>, or the rest of the API, prefer those over raw <code>ffi</code> reads — they keep working even if internal offsets shift between game updates.</div>
   <div class="note">See <a href="#callbacks/ExCamera">Example: FreeCam + ThirdPerson</a> for a full script built on exactly this pattern: <code>mem.FindPattern</code> to find <code>IInput</code>, then <code>ffi.cast</code> to read and write one of its fields.</div>
+</article>
+
+<article class="page" data-route="ffi/Hooks">
+  <div class="crumb">ffi</div>
+  <h1>Hooking a function</h1>
+  <p class="lead">A script can intercept a native function with <code>ffi</code> alone: find the function, copy its first bytes to a safe place, and overwrite them with a jump to your own code. The <a href="#ffi/ExChatSpy">ChatSpy examples</a> use this to read every line the game chat inserts, without changing what the game does.</p>
+  <h2>The pieces</h2>
+  <ol>
+    <li><strong>Find the function.</strong> <a href="#mem/FindPattern">mem.FindPattern</a> returns its address. Check the first bytes before patching, so a different game build is not patched by mistake.</li>
+    <li><strong>Callback.</strong> <code>ffi.cast("void(__cdecl*)(void*)", fn)</code> turns a Lua function into a native one. Keep a reference to it, or the garbage collector frees it and the game crashes on the next call. A callback made this way cannot take variadic arguments.</li>
+    <li><strong>Trampoline.</strong> Executable memory (<code>VirtualAlloc</code>) holding the stolen bytes, followed by <code>push address; ret</code> to continue in the original function. Steal whole instructions, and at least 6 bytes.</li>
+    <li><strong>Stub.</strong> Small machine code that saves the registers (<code>pushad</code>, <code>pushfd</code>), passes a pointer to them to the callback, restores them, and jumps to the trampoline. The original function then runs normally.</li>
+    <li><strong>Patch.</strong> The first 6 bytes of the function become <code>push stub; ret</code>.</li>
+  </ol>
+  <h2>Reading the arguments</h2>
+  <p>The callback receives a pointer <code>r</code> to the saved registers, read as <code>uint32_t</code>:</p>
+  <div class="tw"><table>
+    <tr><th>Index</th><th>Holds</th></tr>
+    <tr><td><code>r[0]</code> to <code>r[7]</code></td><td>EDI, ESI, EBP, ESP, EBX, EDX, ECX, EAX. For a <code>thiscall</code> function, <code>r[6]</code> is the <code>this</code> pointer.</td></tr>
+    <tr><td><code>r[8]</code></td><td>The return address.</td></tr>
+    <tr><td><code>r[9]</code> and up</td><td>The arguments on the stack, in order. The scripts call <code>r + 9</code> the argument array.</td></tr>
+  </table></div>
+  <h2>Applying and undoing the patch</h2>
+  <ul>
+    <li>Where <a href="#bytepatch/PatchBytes">bytepatch.PatchBytes</a> exists, use it. The patch is undone automatically when the script is unloaded.</li>
+    <li>Where it does not exist, change the memory protection with <code>VirtualProtect</code>, write the bytes, and put the protection back. Keep the original bytes and write them back when the script unloads. Otherwise the game keeps jumping into memory that no longer exists. The Aimware version of <a href="#ffi/ExChatSpy">ChatSpy</a> does exactly this.</li>
+  </ul>
+  <div class="note warn"><strong>This can crash the game.</strong> A wrong address, a wrong number of stolen bytes, or a stub that does not restore the registers crashes instantly. Test with a hook that only reads, as the examples do.</div>
+</article>
+
+<article class="page" data-route="ffi/ExChatSpy">
+  <div class="crumb">ffi</div>
+  <h1>Example: ChatSpy (AW / RZ)</h1>
+  <p class="lead">Shows chat messages that the game chat did not show. The script hooks <code>ChatHud</code> to see every line the chat inserts, and listens to the <code>player_say</code> event. A message that arrives through the event but never passes through the hook is displayed by the script, in the center of the screen, in the game chat with <a href="#client/ChatPrintf">client.ChatPrintf</a>, or both.</p>
+  <div class="tw"><table>
+    <tr><th>Control</th><th>Description</th></tr>
+    <tr><td><code>Enable chat spy</code></td><td>Turns the script on.</td></tr>
+    <tr><td><code>Chat spy output</code></td><td><code>Screen</code>, <code>Game chat</code> or <code>Both</code>.</td></tr>
+    <tr><td><code>Chat spy time (s)</code></td><td>How long a line stays on screen.</td></tr>
+  </table></div>
+  <p>Lines look like <code>(Survivor) name : text</code>, <code>(Infected) name : text</code> or <code>(Spectator) name : text</code>. A dead player gets a <code>[DEAD]</code> prefix. Your own messages are skipped. A line printed by the script itself is not seen by the hook, because a flag read by the stub turns the callback off while <code>client.ChatPrintf</code> runs.</p>
+  <div class="ex">
+    <section data-title="AW (manual bytepatch)">
+      <p class="desc">The version for the red paid hack. That host has no <code>bytepatch.PatchBytes</code>, so the byte patch is done manually with <code>VirtualProtect</code>, and undone when the script unloads. The script uses <code>bytepatch.PatchBytes</code> when it exists, so the same file also runs here.</p>
+      <pre><code>-- CHATSPY BY NOE23X(UC)
+-- LUA FOR THE RED PAID HACK
+-- DIFFERENCE: the byte patch is done manually (VirtualProtect) instead of bytepatch.PatchBytes
+-- Implementacao: gancho em HUDCHAT + evento player_say, mostra o que o chat do jogo nao exibiu
+
+local grupo   = gui.Reference("Exploits", "Exploits_", "ChatSpy (AW)")
+local ativo   = gui.Checkbox(grupo, "cspy_x_on", "Enable chat spy", true)
+local saida   = gui.Combobox(grupo, "cspy_x_out", "Chat spy output", "Screen", "Game chat", "Both")
+local duracao = gui.Slider(grupo, "cspy_x_ttl", "Chat spy time (s)", 12, 3, 60)
+
+pcall(function() client.AllowListener("player_say") end)
+pcall(function() client.AllowListener("round_start") end)
+
+local ESPERA   = 0.4
+local MAX_TELA = 8
+
+local ROTULO = { [1] = "Spectator", [2] = "Survivor", [3] = "Infected" }
+local COR_RGB = { [1] = { 200, 200, 200 }, [2] = { 120, 170, 255 }, [3] = { 255, 110, 110 } }
+local COR_JOGO = { [1] = "\x01", [2] = "\x04", [3] = "\x03" }
+
+local linhas_tela = {}
+local fila_jogo   = {}
+local vistos      = {}
+local espera      = {}
+local erro_gancho = nil
+
+local mudo = ffi.new("uint32_t[1]")
+
+local function limpar_cores(s) return (s:gsub("[\1-\8]", "")) end
+
+local function normalizar(s)
+    s = limpar_cores(s or ""):lower()
+    s = s:gsub("%s+", " ")
+    s = s:gsub("^ ", ""):gsub(" $", "")
+    return s
+end
+
+local function exibir(equipe, texto_tela, texto_jogo)
+    local modo = saida:GetValue()
+    if modo == 0 or modo == 2 then
+        linhas_tela[#linhas_tela + 1] = { t = globals.RealTime(), equipe = equipe, texto = texto_tela }
+        while #linhas_tela &gt; MAX_TELA do table.remove(linhas_tela, 1) end
+    end
+    if modo == 1 or modo == 2 then
+        mudo[0] = 1
+        pcall(client.ChatPrintf, texto_jogo)
+        mudo[0] = 0
+    end
+end
+
+local function processar()
+    local agora = globals.RealTime()
+    if erro_gancho then print("[ChatSpy] " .. tostring(erro_gancho)); erro_gancho = nil end
+
+    while #fila_jogo &gt; 0 do
+        local m = table.remove(fila_jogo, 1)
+        local limpo = limpar_cores(m.texto)
+        local _, msg = limpo:match("^(.-)%s+:%s+(.*)$")
+        local chave = m.idx .. "|" .. normalizar(msg or limpo)
+        local achou = false
+        for i = 1, #espera do
+            if espera[i].chave == chave then
+                table.remove(espera, i)
+                achou = true
+                break
+            end
+        end
+        if not achou then
+            vistos[#vistos + 1] = { t = agora, chave = chave }
+            while #vistos &gt; 64 do table.remove(vistos, 1) end
+        end
+    end
+
+    local i = 1
+    while i &lt;= #espera do
+        local p = espera[i]
+        if agora &gt;= p.limite then
+            table.remove(espera, i)
+            exibir(p.equipe, p.tela, p.jogo)
+        else
+            i = i + 1
+        end
+    end
+
+    while #vistos &gt; 0 and agora - vistos[1].t &gt; 5 do table.remove(vistos, 1) end
+end
+
+ffi.cdef[[
+    void* VirtualAlloc(void* lpAddress, size_t dwSize, uint32_t flAllocationType, uint32_t flProtect);
+    int   IsBadReadPtr(const void* lp, size_t ucb);
+]]
+pcall(ffi.cdef, [[
+    int VirtualProtect(void* lpAddress, size_t dwSize, uint32_t flNewProtect, uint32_t* lpflOldProtect);
+]])
+
+local GUARDA = {}
+
+local function legivel(p, n)
+    return p &gt; 0x10000 and p &lt; 0x7FFF0000 and ffi.C.IsBadReadPtr(ffi.cast("const void*", p), n) == 0
+end
+
+local function u8(c)
+    if c &lt; 0x80 then return string.char(c)
+    elseif c &lt; 0x800 then
+        return string.char(0xC0 + bit.rshift(c, 6), 0x80 + bit.band(c, 0x3F))
+    elseif c &lt; 0x10000 then
+        return string.char(0xE0 + bit.rshift(c, 12), 0x80 + bit.band(bit.rshift(c, 6), 0x3F), 0x80 + bit.band(c, 0x3F))
+    end
+    return string.char(0xF0 + bit.rshift(c, 18), 0x80 + bit.band(bit.rshift(c, 12), 0x3F),
+                       0x80 + bit.band(bit.rshift(c, 6), 0x3F), 0x80 + bit.band(c, 0x3F))
+end
+
+local function ler_wide(p, maximo)
+    if not legivel(p, 2) then return nil end
+    local saida_t, i = {}, 0
+    while i &lt; maximo do
+        local end_ = p + i * 2
+        if not legivel(end_, 2) then break end
+        local c = ffi.cast("const uint16_t*", end_)[0]
+        if c == 0 then break end
+        i = i + 1
+        if c &gt;= 0xD800 and c &lt;= 0xDBFF and legivel(p + i * 2, 2) then
+            local lo = ffi.cast("const uint16_t*", p + i * 2)[0]
+            if lo &gt;= 0xDC00 and lo &lt;= 0xDFFF then
+                c = 0x10000 + (c - 0xD800) * 0x400 + (lo - 0xDC00)
+                i = i + 1
+            end
+        end
+        saida_t[#saida_t + 1] = u8(c)
+    end
+    return table.concat(saida_t)
+end
+
+local function bytes32(n)
+    return { bit.band(n, 0xFF), bit.band(bit.rshift(n, 8), 0xFF),
+             bit.band(bit.rshift(n, 16), 0xFF), bit.band(bit.rshift(n, 24), 0xFF) }
+end
+
+local function emitir(p, off, lista)
+    for i = 1, #lista do p[off + i - 1] = lista[i] end
+    return off + #lista
+end
+
+local function alocar(tam)
+    local p = ffi.C.VirtualAlloc(nil, tam, 0x3000, 0x40)
+    if p == nil then return nil end
+    return ffi.cast("uint8_t*", p)
+end
+
+local tipo_cb = ffi.typeof("void(__cdecl*)(void*)")
+
+local PARCHES = {}
+
+local function escrever_bytes(endereco, lista)
+    local ptr = ffi.cast("uint8_t*", endereco)
+    local velho = ffi.new("uint32_t[1]")
+    local r = ffi.C.VirtualProtect(ffi.cast("void*", endereco), #lista, 0x40, velho)
+    if r == 0 or r == false then return false end
+    local original = {}
+    for i = 1, #lista do
+        original[i] = ptr[i - 1]
+        ptr[i - 1] = lista[i]
+    end
+    ffi.C.VirtualProtect(ffi.cast("void*", endereco), #lista, velho[0], velho)
+    PARCHES[#PARCHES + 1] = { endereco = endereco, original = original }
+    return true
+end
+
+local function parchear(endereco, lista)
+    if type(bytepatch) == "table" and bytepatch.PatchBytes then
+        return bytepatch.PatchBytes(endereco, lista) and true or false
+    end
+    return escrever_bytes(endereco, lista)
+end
+
+local function desfazer_parches()
+    for i = #PARCHES, 1, -1 do
+        local p = PARCHES[i]
+        local ptr = ffi.cast("uint8_t*", p.endereco)
+        local velho = ffi.new("uint32_t[1]")
+        local r = ffi.C.VirtualProtect(ffi.cast("void*", p.endereco), #p.original, 0x40, velho)
+        if r ~= 0 and r ~= false then
+            for j = 1, #p.original do ptr[j - 1] = p.original[j] end
+            ffi.C.VirtualProtect(ffi.cast("void*", p.endereco), #p.original, velho[0], velho)
+        end
+        PARCHES[i] = nil
+    end
+end
+pcall(callbacks.Register, "Unload", "cspy_unload", desfazer_parches)
+
+local function plantar(modulo, padrao, roubados, esperado, tratar)
+    local alvo = mem.FindPattern(modulo, padrao)
+    if not alvo then return false end
+
+    local orig = ffi.cast("uint8_t*", alvo)
+    for i, b in ipairs(esperado) do
+        if orig[i - 1] ~= b then return false end
+    end
+
+    local cb = ffi.cast(tipo_cb, function(argp)
+        local ok, err = pcall(function()
+            local r = ffi.cast("uint32_t*", argp)
+            tratar(r, r + 9)
+        end)
+        if not ok then erro_gancho = err end
+    end)
+
+    local tramp = alocar(48)
+    if not tramp then return false end
+    for i = 0, roubados - 1 do tramp[i] = orig[i] end
+    tramp[roubados] = 0x68
+    ffi.cast("uint32_t*", tramp + roubados + 1)[0] = alvo + roubados
+    tramp[roubados + 5] = 0xC3
+
+    local stub = alocar(64)
+    if not stub then return false end
+    local end_cb    = ffi.cast("uint32_t", ffi.cast("void*", cb))
+    local end_tramp = ffi.cast("uint32_t", ffi.cast("void*", tramp))
+    local end_mudo  = ffi.cast("uint32_t", ffi.cast("void*", mudo))
+
+    local o = 0
+    o = emitir(stub, o, { 0x60, 0x9C })
+    stub[o] = 0x83; stub[o + 1] = 0x3D
+    ffi.cast("uint32_t*", stub + o + 2)[0] = end_mudo
+    stub[o + 6] = 0x00; o = o + 7
+    o = emitir(stub, o, { 0x75, 0x0F })
+    o = emitir(stub, o, { 0x8D, 0x44, 0x24, 0x04, 0x50 })
+    stub[o] = 0xB8; ffi.cast("uint32_t*", stub + o + 1)[0] = end_cb; o = o + 5
+    o = emitir(stub, o, { 0xFF, 0xD0, 0x83, 0xC4, 0x04 })
+    o = emitir(stub, o, { 0x9D, 0x61 })
+    stub[o] = 0x68; ffi.cast("uint32_t*", stub + o + 1)[0] = end_tramp; o = o + 5
+    stub[o] = 0xC3
+
+    GUARDA[#GUARDA + 1] = { cb = cb, tramp = tramp, stub = stub, mudo = mudo }
+
+    local end_stub = tonumber(ffi.cast("uint32_t", ffi.cast("void*", stub)))
+    local salto = { 0x68 }
+    for _, b in ipairs(bytes32(end_stub)) do salto[#salto + 1] = b end
+    salto[#salto + 1] = 0xC3
+    if roubados &lt; #salto then return false end
+
+    return parchear(alvo, salto)
+end
+
+local function ao_linha(r, a)
+    local buf = a[0]
+    local idx = ffi.cast("int32_t*", a)[1]
+    local texto = ler_wide(buf, 512)
+    if texto and #fila_jogo &lt; 64 then
+        fila_jogo[#fila_jogo + 1] = { idx = idx, texto = texto }
+    end
+end
+
+local gancho_ok = plantar("client.dll",
+    "55 8B EC 83 EC ?? 53 56 8B D9 8B 83",
+    6, { 0x55, 0x8B, 0xEC, 0x83, 0xEC }, ao_linha)
+
+if not gancho_ok then
+    print("[ChatSpy] gancho do chat nao instalado: mostrando todas as mensagens")
+end
+
+local function nome_de(e, padrao)
+    local n; pcall(function() n = e and e:GetName() end)
+    if type(n) == "string" and n ~= "" then return n end
+    return padrao or "?"
+end
+
+callbacks.Register("FireGameEvent", "cspy_x_eventos", function(ev)
+    local nome_ev = ev:GetName()
+
+    if nome_ev == "round_start" then
+        linhas_tela = {}; espera = {}; vistos = {}; fila_jogo = {}
+        return
+    end
+
+    if nome_ev ~= "player_say" or not ativo:GetValue() then return end
+
+    local idx; pcall(function() idx = client.GetPlayerIndexByUserID(ev:GetInt("userid")) end)
+    local eu = entities.GetLocalPlayer()
+    if not eu or not idx or idx == eu:GetIndex() then return end
+
+    local e; pcall(function() e = entities.GetByIndex(idx) end)
+    local equipe = e and e:GetTeamNumber() or 0
+    local texto = ev:GetString("text") or ""
+    local morto = ""
+    pcall(function() if not e:IsAlive() then morto = "[DEAD] " end end)
+
+    local rotulo = "(" .. (ROTULO[equipe] or "?") .. ")"
+    local nome = nome_de(e, ev:GetString("name"))
+    local tela = string.format("%s%s %s : %s", morto, rotulo, nome, texto)
+    local jogo = string.format("%s%s%s\x01 %s : %s", COR_JOGO[equipe] or "\x01", morto, rotulo, nome, texto)
+
+    if not gancho_ok then
+        exibir(equipe, tela, jogo)
+        return
+    end
+
+    local chave = idx .. "|" .. normalizar(texto)
+    for i = #vistos, 1, -1 do
+        if vistos[i].chave == chave then
+            table.remove(vistos, i)
+            return
+        end
+    end
+    espera[#espera + 1] = { chave = chave, equipe = equipe, tela = tela, jogo = jogo, limite = globals.RealTime() + ESPERA }
+end)
+
+local fonte
+callbacks.Register("CreateMove", "cspy_x_cm", function(cmd) processar() end)
+callbacks.Register("Draw", "cspy_x_draw", function()
+    processar()
+    local modo = saida:GetValue()
+    if not ativo:GetValue() or #linhas_tela == 0 or modo == 1 then return end
+    if not fonte then fonte = draw.CreateFont("Tahoma", 14, 600) end
+    draw.SetFont(fonte)
+
+    local larg, alt = draw.GetScreenSize()
+    local agora, manter = globals.RealTime(), duracao:GetValue()
+
+    local visiveis = {}
+    for i = 1, #linhas_tela do
+        if agora - linhas_tela[i].t &lt; manter then visiveis[#visiveis + 1] = linhas_tela[i] end
+    end
+    if #visiveis == 0 then return end
+
+    local y = math.floor(alt / 2 - (#visiveis * 16) / 2)
+    for i = 1, #visiveis do
+        local l = visiveis[i]
+        local idade = agora - l.t
+        local alfa = idade &gt; manter - 1 and math.floor(255 * (manter - idade)) or 255
+        local c = COR_RGB[l.equipe] or { 255, 255, 255 }
+
+        local tw = 0
+        pcall(function() tw = draw.GetTextSize(l.texto) end)
+        local x = math.floor((larg - tw) / 2)
+
+        draw.Color(0, 0, 0, math.floor(alfa * 0.6))
+        draw.Text(x + 1, y + 1, l.texto)
+        draw.Color(c[1], c[2], c[3], alfa)
+        draw.Text(x, y, l.texto)
+        y = y + 16
+    end
+end)</code></pre>
+    </section>
+    <section data-title="RZ (bytepatch.PatchBytes)">
+      <p class="desc">The RazeHack version. <code>bytepatch.PatchBytes</code> applies the jump and undoes it when the script is unloaded. A global counter makes only the newest copy of the script answer, so reloading it does not duplicate lines.</p>
+      <pre><code>-- CHATSPY BY NOE23X(UC)
+-- Implementacao: gancho em HUDCHAT + evento player_say, mostra o que o chat do jogo nao exibiu
+
+_G.cspy_x_gen = (_G.cspy_x_gen or 0) + 1
+local minha = _G.cspy_x_gen
+
+local grupo   = gui.Reference("Exploits", "Exploits_", "ChatSpy (RZ)")
+local ativo   = gui.Checkbox(grupo, "cspy_x_on", "Enable chat spy", true)
+local saida   = gui.Combobox(grupo, "cspy_x_out", "Chat spy output", "Screen", "Game chat", "Both")
+local duracao = gui.Slider(grupo, "cspy_x_ttl", "Chat spy time (s)", 12, 3, 60)
+
+pcall(function() client.AllowListener("player_say") end)
+pcall(function() client.AllowListener("round_start") end)
+
+local ESPERA   = 0.4
+local MAX_TELA = 8
+
+local ROTULO = { [1] = "Spectator", [2] = "Survivor", [3] = "Infected" }
+local COR_RGB = { [1] = { 200, 200, 200 }, [2] = { 120, 170, 255 }, [3] = { 255, 110, 110 } }
+local COR_JOGO = { [1] = "\x01", [2] = "\x04", [3] = "\x03" }
+
+local linhas_tela = {}
+local fila_jogo   = {}
+local vistos      = {}
+local espera      = {}
+local erro_gancho = nil
+
+local mudo = ffi.new("uint32_t[1]")
+
+local function limpar_cores(s) return (s:gsub("[\1-\8]", "")) end
+
+local function normalizar(s)
+    s = limpar_cores(s or ""):lower()
+    s = s:gsub("%s+", " ")
+    s = s:gsub("^ ", ""):gsub(" $", "")
+    return s
+end
+
+local function exibir(equipe, texto_tela, texto_jogo)
+    local modo = saida:GetValue()
+    if modo == 0 or modo == 2 then
+        linhas_tela[#linhas_tela + 1] = { t = globals.RealTime(), equipe = equipe, texto = texto_tela }
+        while #linhas_tela &gt; MAX_TELA do table.remove(linhas_tela, 1) end
+    end
+    if modo == 1 or modo == 2 then
+        mudo[0] = 1
+        pcall(client.ChatPrintf, texto_jogo)
+        mudo[0] = 0
+    end
+end
+
+local function processar()
+    local agora = globals.RealTime()
+    if erro_gancho then print("[ChatSpy] " .. tostring(erro_gancho)); erro_gancho = nil end
+
+    while #fila_jogo &gt; 0 do
+        local m = table.remove(fila_jogo, 1)
+        local limpo = limpar_cores(m.texto)
+        local _, msg = limpo:match("^(.-)%s+:%s+(.*)$")
+        local chave = m.idx .. "|" .. normalizar(msg or limpo)
+        local achou = false
+        for i = 1, #espera do
+            if espera[i].chave == chave then
+                table.remove(espera, i)
+                achou = true
+                break
+            end
+        end
+        if not achou then
+            vistos[#vistos + 1] = { t = agora, chave = chave }
+            while #vistos &gt; 64 do table.remove(vistos, 1) end
+        end
+    end
+
+    local i = 1
+    while i &lt;= #espera do
+        local p = espera[i]
+        if agora &gt;= p.limite then
+            table.remove(espera, i)
+            exibir(p.equipe, p.tela, p.jogo)
+        else
+            i = i + 1
+        end
+    end
+
+    while #vistos &gt; 0 and agora - vistos[1].t &gt; 5 do table.remove(vistos, 1) end
+end
+
+ffi.cdef[[
+    void* VirtualAlloc(void* lpAddress, size_t dwSize, uint32_t flAllocationType, uint32_t flProtect);
+    int   IsBadReadPtr(const void* lp, size_t ucb);
+]]
+
+local GUARDA = {}
+
+local function legivel(p, n)
+    return p &gt; 0x10000 and p &lt; 0x7FFF0000 and ffi.C.IsBadReadPtr(ffi.cast("const void*", p), n) == 0
+end
+
+local function u8(c)
+    if c &lt; 0x80 then return string.char(c)
+    elseif c &lt; 0x800 then
+        return string.char(0xC0 + bit.rshift(c, 6), 0x80 + bit.band(c, 0x3F))
+    elseif c &lt; 0x10000 then
+        return string.char(0xE0 + bit.rshift(c, 12), 0x80 + bit.band(bit.rshift(c, 6), 0x3F), 0x80 + bit.band(c, 0x3F))
+    end
+    return string.char(0xF0 + bit.rshift(c, 18), 0x80 + bit.band(bit.rshift(c, 12), 0x3F),
+                       0x80 + bit.band(bit.rshift(c, 6), 0x3F), 0x80 + bit.band(c, 0x3F))
+end
+
+local function ler_wide(p, maximo)
+    if not legivel(p, 2) then return nil end
+    local saida_t, i = {}, 0
+    while i &lt; maximo do
+        local end_ = p + i * 2
+        if not legivel(end_, 2) then break end
+        local c = ffi.cast("const uint16_t*", end_)[0]
+        if c == 0 then break end
+        i = i + 1
+        if c &gt;= 0xD800 and c &lt;= 0xDBFF and legivel(p + i * 2, 2) then
+            local lo = ffi.cast("const uint16_t*", p + i * 2)[0]
+            if lo &gt;= 0xDC00 and lo &lt;= 0xDFFF then
+                c = 0x10000 + (c - 0xD800) * 0x400 + (lo - 0xDC00)
+                i = i + 1
+            end
+        end
+        saida_t[#saida_t + 1] = u8(c)
+    end
+    return table.concat(saida_t)
+end
+
+local function bytes32(n)
+    return { bit.band(n, 0xFF), bit.band(bit.rshift(n, 8), 0xFF),
+             bit.band(bit.rshift(n, 16), 0xFF), bit.band(bit.rshift(n, 24), 0xFF) }
+end
+
+local function emitir(p, off, lista)
+    for i = 1, #lista do p[off + i - 1] = lista[i] end
+    return off + #lista
+end
+
+local function alocar(tam)
+    local p = ffi.C.VirtualAlloc(nil, tam, 0x3000, 0x40)
+    if p == nil then return nil end
+    return ffi.cast("uint8_t*", p)
+end
+
+local tipo_cb = ffi.typeof("void(__cdecl*)(void*)")
+
+local function plantar(modulo, padrao, roubados, esperado, tratar)
+    local alvo = mem.FindPattern(modulo, padrao)
+    if not alvo then return false end
+
+    local orig = ffi.cast("uint8_t*", alvo)
+    for i, b in ipairs(esperado) do
+        if orig[i - 1] ~= b then return false end
+    end
+
+    local cb = ffi.cast(tipo_cb, function(argp)
+        local ok, err = pcall(function()
+            local r = ffi.cast("uint32_t*", argp)
+            tratar(r, r + 9)
+        end)
+        if not ok then erro_gancho = err end
+    end)
+
+    local tramp = alocar(48)
+    if not tramp then return false end
+    for i = 0, roubados - 1 do tramp[i] = orig[i] end
+    tramp[roubados] = 0x68
+    ffi.cast("uint32_t*", tramp + roubados + 1)[0] = alvo + roubados
+    tramp[roubados + 5] = 0xC3
+
+    local stub = alocar(64)
+    if not stub then return false end
+    local end_cb    = ffi.cast("uint32_t", ffi.cast("void*", cb))
+    local end_tramp = ffi.cast("uint32_t", ffi.cast("void*", tramp))
+    local end_mudo  = ffi.cast("uint32_t", ffi.cast("void*", mudo))
+
+    local o = 0
+    o = emitir(stub, o, { 0x60, 0x9C })
+    stub[o] = 0x83; stub[o + 1] = 0x3D
+    ffi.cast("uint32_t*", stub + o + 2)[0] = end_mudo
+    stub[o + 6] = 0x00; o = o + 7
+    o = emitir(stub, o, { 0x75, 0x0F })
+    o = emitir(stub, o, { 0x8D, 0x44, 0x24, 0x04, 0x50 })
+    stub[o] = 0xB8; ffi.cast("uint32_t*", stub + o + 1)[0] = end_cb; o = o + 5
+    o = emitir(stub, o, { 0xFF, 0xD0, 0x83, 0xC4, 0x04 })
+    o = emitir(stub, o, { 0x9D, 0x61 })
+    stub[o] = 0x68; ffi.cast("uint32_t*", stub + o + 1)[0] = end_tramp; o = o + 5
+    stub[o] = 0xC3
+
+    GUARDA[#GUARDA + 1] = { cb = cb, tramp = tramp, stub = stub, mudo = mudo }
+
+    local end_stub = tonumber(ffi.cast("uint32_t", ffi.cast("void*", stub)))
+    local salto = { 0x68 }
+    for _, b in ipairs(bytes32(end_stub)) do salto[#salto + 1] = b end
+    salto[#salto + 1] = 0xC3
+    if roubados &lt; #salto then return false end
+
+    return bytepatch.PatchBytes(alvo, salto) and true or false
+end
+
+local function ao_linha(r, a)
+    local buf = a[0]
+    local idx = ffi.cast("int32_t*", a)[1]
+    local texto = ler_wide(buf, 512)
+    if texto and #fila_jogo &lt; 64 then
+        fila_jogo[#fila_jogo + 1] = { idx = idx, texto = texto }
+    end
+end
+
+local gancho_ok = plantar("client.dll",
+    "55 8B EC 83 EC ?? 53 56 8B D9 8B 83",
+    6, { 0x55, 0x8B, 0xEC, 0x83, 0xEC }, ao_linha)
+
+if not gancho_ok then
+    print("[ChatSpy] gancho do chat nao instalado: mostrando todas as mensagens")
+end
+
+local ult_chave, ult_t = nil, 0
+
+local function nome_de(e, padrao)
+    local n; pcall(function() n = e and e:GetName() end)
+    if type(n) == "string" and n ~= "" then return n end
+    return padrao or "?"
+end
+
+callbacks.Register("FireGameEvent", "cspy_x_eventos", function(ev)
+    if _G.cspy_x_gen ~= minha then return end
+    local nome_ev = ev:GetName()
+
+    if nome_ev == "round_start" then
+        linhas_tela = {}; espera = {}; vistos = {}; fila_jogo = {}
+        return
+    end
+
+    if nome_ev ~= "player_say" or not ativo:GetValue() then return end
+
+    local idx; pcall(function() idx = client.GetPlayerIndexByUserID(ev:GetInt("userid")) end)
+    local eu = entities.GetLocalPlayer()
+    if not eu or not idx or idx == eu:GetIndex() then return end
+
+    local e; pcall(function() e = entities.GetByIndex(idx) end)
+    local equipe = e and e:GetTeamNumber() or 0
+    local texto = ev:GetString("text") or ""
+    local morto = ""
+    pcall(function() if not e:IsAlive() then morto = "[DEAD] " end end)
+
+    local rotulo = "(" .. (ROTULO[equipe] or "?") .. ")"
+    local nome = nome_de(e, ev:GetString("name"))
+    local tela = string.format("%s%s %s : %s", morto, rotulo, nome, texto)
+    local jogo = string.format("%s%s%s\x01 %s : %s", COR_JOGO[equipe] or "\x01", morto, rotulo, nome, texto)
+
+    local chave = idx .. "|" .. normalizar(texto)
+    local agora = globals.RealTime()
+    if chave == ult_chave and agora - ult_t &lt; 0.2 then return end
+    ult_chave, ult_t = chave, agora
+
+    if not gancho_ok then
+        exibir(equipe, tela, jogo)
+        return
+    end
+
+    for i = #vistos, 1, -1 do
+        if vistos[i].chave == chave then
+            table.remove(vistos, i)
+            return
+        end
+    end
+    espera[#espera + 1] = { chave = chave, equipe = equipe, tela = tela, jogo = jogo, limite = globals.RealTime() + ESPERA }
+end)
+
+local fonte
+callbacks.Register("CreateMove", "cspy_x_cm", function(cmd)
+    if _G.cspy_x_gen == minha then processar() end
+end)
+callbacks.Register("Draw", "cspy_x_draw", function()
+    if _G.cspy_x_gen ~= minha then return end
+    processar()
+    local modo = saida:GetValue()
+    if not ativo:GetValue() or #linhas_tela == 0 or modo == 1 then return end
+    if not fonte then fonte = draw.CreateFont("Tahoma", 14, 600) end
+    draw.SetFont(fonte)
+
+    local larg, alt = draw.GetScreenSize()
+    local agora, manter = globals.RealTime(), duracao:GetValue()
+
+    local visiveis = {}
+    for i = 1, #linhas_tela do
+        if agora - linhas_tela[i].t &lt; manter then visiveis[#visiveis + 1] = linhas_tela[i] end
+    end
+    if #visiveis == 0 then return end
+
+    local y = math.floor(alt / 2 - (#visiveis * 16) / 2)
+    for i = 1, #visiveis do
+        local l = visiveis[i]
+        local idade = agora - l.t
+        local alfa = idade &gt; manter - 1 and math.floor(255 * (manter - idade)) or 255
+        local c = COR_RGB[l.equipe] or { 255, 255, 255 }
+
+        local tw = 0
+        pcall(function() tw = draw.GetTextSize(l.texto) end)
+        local x = math.floor((larg - tw) / 2)
+
+        draw.Color(0, 0, 0, math.floor(alfa * 0.6))
+        draw.Text(x + 1, y + 1, l.texto)
+        draw.Color(c[1], c[2], c[3], alfa)
+        draw.Text(x, y, l.texto)
+        y = y + 16
+    end
+end)</code></pre>
+    </section>
+  </div>
+  <div class="note">The technique is explained in <a href="#ffi/Hooks">Hooking a function</a>. Both versions only read: they never change the text the game chat shows.</div>
 </article>
 
 <!-- ================================================= GLOBALS -->
